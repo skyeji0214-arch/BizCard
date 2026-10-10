@@ -1,60 +1,150 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>명함등록</title>
-  <meta name="theme-color" content="#f5f8ff">
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icon-192.png">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="명함등록">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <style>
-    html, body {
-      margin: 0;
-      height: 100%;
-      background: #f5f8ff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    iframe {
-      border: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    #err {
-      padding: 24px;
-      color: #555;
-      line-height: 1.6;
-      text-align: center;
-      margin-top: 50px;
-    }
-  </style>
-</head>
-<body>
-  <iframe id="f" allow="camera; clipboard-write; clipboard-read" style="display:none"></iframe>
-  <div id="err" style="display:none">
-    <code>index.html</code> 안의 <b>GAS_URL</b>에 앱스크립트 웹 앱 주소(…/exec)를 넣어주세요.
-  </div>
+// Google Apps Script 백엔드 (Code.gs)
 
-  <script>
-    // ▼ 앱스크립트 [배포 → 웹 앱 URL]을 여기에 붙여넣으세요 (…/exec 로 끝나는 주소)
-    const GAS_URL = 'YOUR_GAS_URL';
+function doGet() {
+  return HtmlService.createHtmlOutput(getHtmlContent())
+    .setTitle('명함 등록 관리자')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
 
-    if (GAS_URL.indexOf('https://script.google.com') === 0) {
-      const f = document.getElementById('f');
-      f.src = GAS_URL;
-      f.style.display = 'block';
-    } else {
-      document.getElementById('err').style.display = 'block';
+function processCardData(data) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('명함목록');
+    if (!sheet) {
+      sheet = ss.insertSheet('명함목록');
+      sheet.appendRow(['등록일시', '이름', '직함/부서', '회사명', '연락처', '이메일', '메모', '이미지링크']);
     }
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+    let fileUrl = '';
+    if (data.imageBase64) {
+      const folderName = '명함이미지_저장소';
+      const folders = DriveApp.getFoldersByName(folderName);
+      let folder;
+      if (folders.hasNext()) {
+        folder = folders.next();
+      } else {
+        folder = DriveApp.createFolder(folderName);
+      }
+
+      const contentType = data.imageBase64.substring(5, data.imageBase64.indexOf(';'));
+      const bytes = Utilities.base64Decode(data.imageBase64.substr(data.imageBase64.indexOf('base64,') + 7));
+      const blob = Utilities.newBlob(bytes, contentType, 'card_' + new Date().getTime() + '.png');
+      const file = folder.createFile(blob);
+      fileUrl = file.getUrl();
     }
-  </script>
-</body>
-</html>
+
+    sheet.appendRow([
+      new Date(),
+      data.name || '',
+      data.title || '',
+      data.company || '',
+      data.phone || '',
+      data.email || '',
+      data.memo || '',
+      fileUrl
+    ]);
+
+    return { status: 'success', message: '성공적으로 저장되었습니다.' };
+  } catch (error) {
+    return { status: 'error', message: error.toString() };
+  }
+}
+
+function getHtmlContent() {
+  return `
+  <!DOCTYPE html>
+  <html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      body { background: #f5f8ff; padding: 20px; color: #333; }
+      .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 480px; margin: 0 auto; }
+      h2 { color: #1a73e8; margin-bottom: 20px; text-align: center; }
+      .form-group { margin-bottom: 14px; }
+      label { display: block; font-size: 13px; font-weight: bold; color: #666; margin-bottom: 4px; }
+      input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+      input:focus, textarea:focus { border-color: #1a73e8; }
+      .btn { width: 100%; padding: 12px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+      .btn:disabled { background: #ccc; }
+      #preview { width: 100%; height: 180px; border: 2px dashed #1a73e8; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px; background: #f8faff; overflow: hidden; position: relative; cursor: pointer; }
+      #preview img { width: 100%; height: 100%; object-fit: cover; display: none; }
+      #fileInput { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>🎴 명함 간편 등록</h2>
+      <div id="preview" onclick="document.getElementById('fileInput').click()">
+        <span id="uploadText">📷 명함 촬영 / 이미지 선택</span>
+        <img id="imgTag" src="" />
+      </div>
+      <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleImage(this)">
+      
+      <form id="cardForm" onsubmit="submitForm(event)">
+        <div class="form-group"><label>이름</label><input type="text" id="name" required></div>
+        <div class="form-group"><label>직함 / 부서</label><input type="text" id="title"></div>
+        <div class="form-group"><label>회사명</label><input type="text" id="company"></div>
+        <div class="form-group"><label>연락처</label><input type="tel" id="phone"></div>
+        <div class="form-group"><label>이메일</label><input type="email" id="email"></div>
+        <div class="form-group"><label>메모</label><textarea id="memo" rows="2"></textarea></div>
+        <button type="submit" class="btn" id="submitBtn">명함 저장하기</button>
+      </form>
+    </div>
+
+    <script>
+      let imageBase64 = '';
+
+      function handleImage(input) {
+        if (input.files && input.files[0]) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            imageBase64 = e.target.result;
+            document.getElementById('imgTag').src = imageBase64;
+            document.getElementById('imgTag').style.display = 'block';
+            document.getElementById('uploadText').style.display = 'none';
+          };
+          reader.readAsDataURL(input.files[0]);
+        }
+      }
+
+      function submitForm(e) {
+        e.preventDefault();
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerText = '저장 중...';
+
+        const payload = {
+          name: document.getElementById('name').value,
+          title: document.getElementById('title').value,
+          company: document.getElementById('company').value,
+          phone: document.getElementById('phone').value,
+          email: document.getElementById('email').value,
+          memo: document.getElementById('memo').value,
+          imageBase64: imageBase64
+        };
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            alert(res.message);
+            document.getElementById('cardForm').reset();
+            document.getElementById('imgTag').style.display = 'none';
+            document.getElementById('uploadText').style.display = 'block';
+            imageBase64 = '';
+            btn.disabled = false;
+            btn.innerText = '명함 저장하기';
+          })
+          .withFailureHandler(function(err) {
+            alert('오류 발생: ' + err);
+            btn.disabled = false;
+            btn.innerText = '명함 저장하기';
+          })
+          .processCardData(payload);
+      }
+    </script>
+  </body>
+  </html>
+  `;
+}
