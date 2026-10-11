@@ -33,6 +33,21 @@
       margin-top: 50px;
     }
   </style>
+  <script>
+    // 카카오톡 및 인앱 브라우저 감지 시 기본 브라우저로 자동 전환
+    (function redirectToExternalBrowser() {
+      const userAgent = navigator.userAgent.toLowerCase();
+      const targetUrl = location.href;
+
+      if (userAgent.indexOf('kakaotalk') > -1) {
+        if (userAgent.indexOf('android') > -1) {
+          location.href = 'intent://' + targetUrl.replace(/https?:\/\//i, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+        } else if (userAgent.indexOf('iphone') > -1 || userAgent.indexOf('ipad') > -1) {
+          location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(targetUrl);
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
   <iframe id="f" allow="camera; clipboard-write; clipboard-read" style="display:none"></iframe>
@@ -41,8 +56,8 @@
   </div>
 
   <script>
-    // 2단계에서 복사한 구글 앱스 크립트 웹 앱 URL을 아래 작은따옴표 안에 입력하세요
-    const GAS_URL = 'YOUR_GAS_URL';
+    // 새로 보내주신 최종 앱스 크립트 (앱1) 주소 반영
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbz-zEkda7XDhU4YHq7-kBYZqbq1iHrHy9rUqm2pliqZB8d-cUQfLaUXUB5OIuUoTGX01Q/exec';
 
     if (GAS_URL.indexOf('https://script.google.com') === 0) {
       const f = document.getElementById('f');
